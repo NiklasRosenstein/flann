@@ -1,0 +1,69 @@
+# -*- coding: utf8; mode: python -*-
+# craftr_module(libs.flann)
+
+from craftr import Framework, path, warn
+from craftr.ext.platform import cxx, ar, ld
+from craftr.ext import rules
+
+try:
+  from craftr.ext.libs.hdf5 import hdf5
+except ImportError:
+  warn('libs.hdf5 module not found. HDF5 support is disabled.')
+  hdf5 = None
+
+try:
+  from craftr.ext.libs.boost import boost
+except ImportError:
+  warn('libs.boost module not found. MPI support is disabled.')
+  boost = None
+
+# The main FLANN framework.
+flann = Framework(
+  include = [path.local('src/cpp')],
+  frameworks = filter(bool, [hdf5, boost]),
+  external_libs = []
+)
+
+# This framework disable warnings that may appear with the FLANN library.
+flann_disable_warnings = Framework(
+  msvc_compile_additional_flags = [
+    '/wd4127', # conditional expression is constant
+    '/wd4996', # function or variable may be unsafe
+    '/wd4702', # unreachable code
+    '/wd4291', # no matching operator delete found; memory will not be freed if initialization throws an exception
+    '/wd4244', # conversion possible loss of data
+    '/wd4100', # unreferenced formal parameter
+    '/wd4245', # signed/unsigned mismatch
+  ],
+)
+
+# Compile the FLANN static library.
+lib = ar.staticlib(
+  output = 'flann-1.8.4',
+  inputs = cxx.compile(
+    sources = path.glob(
+      'src/cpp/flann/**/*.cpp',
+      exclude = filter(bool, [
+        'src/cpp/flann/mpi/**/*.cpp' if not hdf5 else None,
+      ]),
+    ),
+    frameworks = [flann, flann_disable_warnings],
+  ),
+)
+
+flann['external_libs'].append(lib.meta['staticlib_output'])
+
+##
+# Examples
+##
+
+test_main = ld.link(
+  output = 'test_flann',
+  inputs = cxx.compile(
+    # msvc_additional_flags = ['/wd4290'],
+    sources = [path.local('examples/flann_example.c')],
+    frameworks = [flann, flann_disable_warnings],
+  ),
+)
+
+test = rules.run(test_main, cwd = project_dir)
